@@ -1,0 +1,45 @@
+.wrapper {
+  position: relative;
+  max-width: 720px;
+  margin: 16px auto 24px;
+}
+
+.input {
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 24px;
+  font-size: 15px;
+  background: #fafafa;
+}
+
+.input:focus {
+  outline: 2px solid var(--accent, #aa3bff);
+  outline-offset: 1px;
+}
+
+.list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  background: #fff;
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  list-style: none;
+  z-index: 5;
+}
+
+.option {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.option:hover,
+.option[aria-selected='true'] {
+  background: var(--accent-bg, rgba(170, 59, 255, 0.1));
+}

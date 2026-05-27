@@ -1,0 +1,16 @@
+.pin {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background-color: #ddd;
+  isolation: isolate;
+}
+
+.image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}

@@ -1,0 +1,7 @@
+.appContainer {
+  max-width: var(--app-content-max, 1280px);
+  margin: 0 auto;
+  padding: 0 var(--app-content-pad, 24px);
+  box-sizing: border-box;
+  width: 100%;
+}

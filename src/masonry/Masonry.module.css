@@ -1,0 +1,15 @@
+.sizer {
+  width: 100%;
+}
+
+.container {
+  position: relative;
+  margin: 0 auto;
+}
+
+.cell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
+}

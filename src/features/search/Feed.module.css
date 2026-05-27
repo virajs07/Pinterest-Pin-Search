@@ -1,0 +1,17 @@
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px 0;
+  width: 100%;
+}
+
+.empty {
+  color: var(--text, #6b6375);
+  text-align: center;
+  padding: 64px 24px;
+}
+
+.card {
+  list-style: none;
+}
