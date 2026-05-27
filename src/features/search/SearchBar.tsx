@@ -8,14 +8,24 @@ import styles from './SearchBar.module.css';
 export type SearchBarProps = {
   onCommit: (query: string) => void;
   initialValue?: string;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
 };
 
-export function SearchBar({ onCommit, initialValue = '' }: SearchBarProps) {
-  const [value, setValue] = useState(initialValue);
+export function SearchBar({ 
+  onCommit, 
+  initialValue = '',
+  searchValue: externalValue,
+  onSearchChange,
+}: SearchBarProps) {
+  const [localValue, setLocalValue] = useState(initialValue);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const listboxId = useId();
   const dispatch = useAppDispatch();
+
+  // Use external value if provided, otherwise use local state
+  const value = externalValue !== undefined ? externalValue : localValue;
 
   useDebouncedSuggestions(value);
   const items = useAppSelector((s) => s.suggestions.items);
@@ -31,9 +41,17 @@ export function SearchBar({ onCommit, initialValue = '' }: SearchBarProps) {
 
   function commit(text: string) {
     setOpen(false);
-    setValue(text);
+    if (!externalValue) setLocalValue(text);
     dispatch(setQuery(text.trim()));
     onCommit(text);
+  }
+
+  function handleInputChange(newValue: string) {
+    if (externalValue === undefined) {
+      setLocalValue(newValue);
+    }
+    onSearchChange?.(newValue);
+    setActiveIndex(0);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -70,11 +88,7 @@ export function SearchBar({ onCommit, initialValue = '' }: SearchBarProps) {
           matchedItems.length > 0 ? `${listboxId}-opt-${clampedActive}` : undefined
         }
         value={value}
-        onChange={(e) => {
-          setValue(e.target.value);
-          setActiveIndex(0);
-          setOpen(true);
-        }}
+        onChange={(e) => handleInputChange(e.target.value)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={onKeyDown}

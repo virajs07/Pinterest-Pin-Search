@@ -1,17 +1,19 @@
 import { useEffect, useRef } from 'react';
 import { useAppDispatch } from '@/store';
-import { fetchPage, setQuery } from '@/store/feedSlice';
+import { fetchPage } from '@/store/feedSlice';
 
 const SEARCH_DEBOUNCE_MS = 500;
-const SEARCH_MIN_CHARS = 1;
 
 /**
- * Debounces search input by `SEARCH_DEBOUNCE_MS` and dispatches `fetchPage`
- * when the query has at least `SEARCH_MIN_CHARS` characters.
- * When query is cleared, resets the feed to idle state.
+ * Debounces search input by `SEARCH_DEBOUNCE_MS` and triggers callbacks.
+ * - Calls onQueryChange when user pauses typing
+ * - Fetches results via fetchPage when query changes (empty or with text)
  * Aborts the previous in-flight call when a new query arrives.
  */
-export function useDebouncedSearch(query: string): void {
+export function useDebouncedSearch(
+  query: string,
+  onQueryChange: (value: string) => void,
+): void {
   const dispatch = useAppDispatch();
   const inFlightRef = useRef<{ abort: (reason?: string) => void } | null>(null);
 
@@ -19,20 +21,16 @@ export function useDebouncedSearch(query: string): void {
     const handle = window.setTimeout(() => {
       const trimmedQuery = query.trim();
       
-      if (trimmedQuery.length === 0) {
-        // Clear the query and reset feed when search is cleared
-        inFlightRef.current?.abort();
-        inFlightRef.current = null;
-        dispatch(setQuery(''));
-      } else if (trimmedQuery.length >= SEARCH_MIN_CHARS) {
-        // Trigger search when query has minimum characters
-        inFlightRef.current?.abort();
-        inFlightRef.current = dispatch(fetchPage()) as unknown as {
-          abort: (reason?: string) => void;
-        };
-      }
+      // Notify parent of query change
+      onQueryChange(trimmedQuery);
+      
+      // Always fetch when query changes (empty or with text)
+      inFlightRef.current?.abort();
+      inFlightRef.current = dispatch(fetchPage()) as unknown as {
+        abort: (reason?: string) => void;
+      };
     }, SEARCH_DEBOUNCE_MS);
 
     return () => window.clearTimeout(handle);
-  }, [query, dispatch]);
+  }, [query, dispatch, onQueryChange]);
 }

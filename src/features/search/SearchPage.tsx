@@ -1,4 +1,5 @@
-import { useAppDispatch, useAppSelector } from '@/store';
+import { useState } from 'react';
+import { useAppDispatch } from '@/store';
 import { fetchPage, setQuery } from '@/store/feedSlice';
 import { clearSuggestions } from '@/store/suggestionsSlice';
 import { useDebouncedSearch } from './useDebouncedSearch';
@@ -8,20 +9,24 @@ import { Feed } from './Feed';
 
 export function SearchPage() {
   const dispatch = useAppDispatch();
-  const query = useAppSelector((s) => s.feed.query);
+  const [searchInputValue, setSearchInputValue] = useState('');
 
-  // Auto-trigger search after debounce
-  useDebouncedSearch(query);
+  // Auto-trigger search after debounce on input value change
+  useDebouncedSearch(searchInputValue, (newValue) => {
+    dispatch(setQuery(newValue.trim()));
+  });
 
   function commit(newQuery: string) {
-    dispatch(setQuery(newQuery.trim()));
+    const trimmed = newQuery.trim();
+    setSearchInputValue(trimmed);
+    dispatch(setQuery(trimmed));
     dispatch(clearSuggestions());
     void dispatch(fetchPage());
   }
 
   return (
     <section data-testid="search-page" className={container.appContainer}>
-      <SearchBar onCommit={commit} />
+      <SearchBar onCommit={commit} searchValue={searchInputValue} onSearchChange={setSearchInputValue} />
       <Feed />
     </section>
   );
