@@ -4,7 +4,7 @@ import type { PinRepository } from '@/data/PinRepository';
 import { removePin, upsertPin, upsertPins } from './pinsSlice';
 import { pushToast } from './toastsSlice';
 
-export type FeedStatus = 'idle' | 'loading' | 'error' | 'end';
+export type FeedStatus = 'idle' | 'loading' | 'error' | 'end' | 'no_results' | 'api_error';
 
 export type FeedState = {
   order: string[];
@@ -12,6 +12,7 @@ export type FeedState = {
   nextCursor?: string;
   query: string;
   descIndex: Record<string, string[]>;
+  errorMessage?: string;
 };
 
 const initialState: FeedState = {
@@ -19,6 +20,7 @@ const initialState: FeedState = {
   status: 'idle',
   query: '',
   descIndex: {},
+  errorMessage: undefined,
 };
 
 type ThunkExtra = { repo: PinRepository };
@@ -196,6 +198,16 @@ const feedSlice = createSlice({
       const { pins, nextCursor, appendedTo } = action.payload;
       // If the query changed mid-flight, drop the response.
       if ((state.query || undefined) !== (appendedTo || undefined)) return;
+      
+      // Reset error state on successful fetch
+      state.errorMessage = undefined;
+      
+      // Handle empty results
+      if (pins.length === 0 && state.order.length === 0 && state.query) {
+        state.status = 'no_results';
+        return;
+      }
+      
       for (const p of pins) {
         if (!state.order.includes(p.id)) state.order.push(p.id);
         const list = state.descIndex[p.descriptionLower];
@@ -208,8 +220,10 @@ const feedSlice = createSlice({
       state.nextCursor = nextCursor;
       state.status = nextCursor ? 'idle' : 'end';
     });
-    builder.addCase(fetchPage.rejected, (state) => {
-      state.status = 'error';
+    builder.addCase(fetchPage.rejected, (state, action) => {
+      const errorMessage = (action.payload as string | undefined) || 'Failed to fetch results';
+      state.status = 'api_error';
+      state.errorMessage = errorMessage;
     });
   },
 });

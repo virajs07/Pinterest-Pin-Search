@@ -1,5 +1,6 @@
 import { useId, useState, type KeyboardEvent } from 'react';
-import { useAppSelector } from '@/store';
+import { useAppDispatch, useAppSelector } from '@/store';
+import { setQuery } from '@/store/feedSlice';
 import { useDebouncedSuggestions } from './useDebouncedSuggestions';
 import { SuggestionsList } from './SuggestionsList';
 import styles from './SearchBar.module.css';
@@ -14,6 +15,7 @@ export function SearchBar({ onCommit, initialValue = '' }: SearchBarProps) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const listboxId = useId();
+  const dispatch = useAppDispatch();
 
   useDebouncedSuggestions(value);
   const items = useAppSelector((s) => s.suggestions.items);
@@ -29,6 +31,8 @@ export function SearchBar({ onCommit, initialValue = '' }: SearchBarProps) {
 
   function commit(text: string) {
     setOpen(false);
+    setValue(text);
+    dispatch(setQuery(text.trim()));
     onCommit(text);
   }
 
@@ -68,6 +72,7 @@ export function SearchBar({ onCommit, initialValue = '' }: SearchBarProps) {
         value={value}
         onChange={(e) => {
           setValue(e.target.value);
+          setActiveIndex(0);
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
