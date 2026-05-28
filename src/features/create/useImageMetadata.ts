@@ -18,12 +18,32 @@ export type ImageMetadataState =
   | { status: 'ready'; metadata: ImageMetadata }
   | { status: 'error'; message: string };
 
+// Bounds on the uploaded source image. The browser <input accept="image/*">
+// is advisory only — the decoder will happily accept anything that looks like
+// an image. These limits exist so an oversize file can't pin the main thread
+// while canvas allocates and toBlob()-encodes five variants.
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB
+const MAX_IMAGE_PIXELS = 40_000_000; // ~6324×6324 — caps canvas allocation
+
 function loadImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('File is not an image'));
+      return;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      reject(new Error(`Image is too large (max ${MAX_FILE_BYTES / 1024 / 1024} MB)`));
+      return;
+    }
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
+      const pixels = img.naturalWidth * img.naturalHeight;
+      if (pixels > MAX_IMAGE_PIXELS) {
+        reject(new Error('Image dimensions exceed the supported maximum'));
+        return;
+      }
       resolve(img);
     };
     img.onerror = () => {

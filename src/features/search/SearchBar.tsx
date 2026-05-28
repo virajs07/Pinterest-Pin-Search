@@ -1,44 +1,31 @@
 import { useId, useState, type KeyboardEvent } from 'react';
-import { useAppDispatch, useAppSelector } from '@/store';
-import { setQuery } from '@/store/feedSlice';
+import { useAppSelector } from '@/store';
+import { selectSuggestions } from '@/store/suggestionsSlice';
 import { useDebouncedSuggestions } from './useDebouncedSuggestions';
 import { SuggestionsList } from './SuggestionsList';
 import styles from './SearchBar.module.css';
 
 export type SearchBarProps = {
+  value: string;
+  onChange: (value: string) => void;
   onCommit: (query: string) => void;
-  initialValue?: string;
-  searchValue?: string;
-  onSearchChange?: (value: string) => void;
 };
 
-export function SearchBar({ 
-  onCommit, 
-  initialValue = '',
-  searchValue: externalValue,
-  onSearchChange,
-}: SearchBarProps) {
-  const [localValue, setLocalValue] = useState(initialValue);
+export function SearchBar({ value, onChange, onCommit }: SearchBarProps) {
   const [open, setOpen] = useState(false);
   // -1 means "no suggestion is highlighted". Highlight only appears when the
   // user explicitly arrows into the list — typing alone should never select.
   const [activeIndex, setActiveIndex] = useState(-1);
   const listboxId = useId();
   const inputId = useId();
-  const dispatch = useAppDispatch();
-
-  // Use external value if provided, otherwise use local state
-  const value = externalValue !== undefined ? externalValue : localValue;
 
   useDebouncedSuggestions(value);
-  const items = useAppSelector((s) => s.suggestions.items);
-  const suggestionsQuery = useAppSelector((s) => s.suggestions.query);
+  const items = useAppSelector(selectSuggestions);
 
-  // Only show suggestions that belong to the current input value.
-  const matchedItems =
-    open && value.trim().length >= 3 && suggestionsQuery === value ? items : [];
+  // The selector returns [] until the debounced query catches up to the input,
+  // so we can render `items` directly — no extra query-vs-input check needed.
+  const matchedItems = open && value.trim().length >= 3 ? items : [];
 
-  // Clamp without forcing a selection — keep -1 if that's where we are.
   const clampedActive =
     activeIndex < 0 || matchedItems.length === 0
       ? -1
@@ -46,17 +33,7 @@ export function SearchBar({
 
   function commit(text: string) {
     setOpen(false);
-    if (!externalValue) setLocalValue(text);
-    dispatch(setQuery(text.trim()));
     onCommit(text);
-  }
-
-  function handleInputChange(newValue: string) {
-    if (externalValue === undefined) {
-      setLocalValue(newValue);
-    }
-    onSearchChange?.(newValue);
-    setActiveIndex(-1);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -91,12 +68,15 @@ export function SearchBar({
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={matchedItems.length > 0}
-        aria-controls={listboxId}
+        aria-controls={matchedItems.length > 0 ? listboxId : undefined}
         aria-activedescendant={
           clampedActive >= 0 ? `${listboxId}-opt-${clampedActive}` : undefined
         }
         value={value}
-        onChange={(e) => handleInputChange(e.target.value)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setActiveIndex(-1);
+        }}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={onKeyDown}

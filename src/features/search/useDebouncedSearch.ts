@@ -1,36 +1,45 @@
-import { useEffect, useRef } from 'react';
-import { useAppDispatch } from '@/store';
-import { fetchPage } from '@/store/feedSlice';
+import { useCallback, useEffect, useRef } from 'react';
+import { useAppDispatch, useAppSelector } from '@/store';
+import { fetchPage, setQuery } from '@/store/feedSlice';
 
 const SEARCH_DEBOUNCE_MS = 500;
 
+type AbortablePromise = { abort: (reason?: string) => void };
+
 /**
- * Debounces search input by `SEARCH_DEBOUNCE_MS` and triggers callbacks.
- * - Calls onQueryChange when user pauses typing
- * - Fetches results via fetchPage when query changes (empty or with text)
- * Aborts the previous in-flight call when a new query arrives.
+ * Owns "the user paused typing → run the search" for SearchPage.
+ *
+ * - Debounces input by `SEARCH_DEBOUNCE_MS`; commits the trimmed value via
+ *   `setQuery` and fires `fetchPage` when it changes.
+ * - Returns `flush(value)` so callers (Enter, suggestion pick) can short-
+ *   circuit the debounce and commit immediately.
+ * - No-ops when the trimmed value equals the current `feed.query`, so the
+ *   initial render and "type the same thing twice" don't trigger spurious
+ *   refetches.
  */
-export function useDebouncedSearch(
-  query: string,
-  onQueryChange: (value: string) => void,
-): void {
+export function useDebouncedSearch(value: string): (overrideValue?: string) => void {
   const dispatch = useAppDispatch();
-  const inFlightRef = useRef<{ abort: (reason?: string) => void } | null>(null);
+  const currentQuery = useAppSelector((s) => s.feed.query);
+  const inFlightRef = useRef<AbortablePromise | null>(null);
+  const currentQueryRef = useRef(currentQuery);
+  useEffect(() => {
+    currentQueryRef.current = currentQuery;
+  }, [currentQuery]);
+
+  const run = useCallback(
+    (trimmed: string) => {
+      if (trimmed === currentQueryRef.current) return;
+      inFlightRef.current?.abort();
+      dispatch(setQuery(trimmed));
+      inFlightRef.current = dispatch(fetchPage()) as unknown as AbortablePromise;
+    },
+    [dispatch],
+  );
 
   useEffect(() => {
-    const handle = window.setTimeout(() => {
-      const trimmedQuery = query.trim();
-      
-      // Notify parent of query change
-      onQueryChange(trimmedQuery);
-      
-      // Always fetch when query changes (empty or with text)
-      inFlightRef.current?.abort();
-      inFlightRef.current = dispatch(fetchPage()) as unknown as {
-        abort: (reason?: string) => void;
-      };
-    }, SEARCH_DEBOUNCE_MS);
-
+    const handle = window.setTimeout(() => run(value.trim()), SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [query, dispatch, onQueryChange]);
+  }, [value, run]);
+
+  return useCallback((overrideValue?: string) => run((overrideValue ?? value).trim()), [run, value]);
 }

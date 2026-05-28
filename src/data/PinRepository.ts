@@ -22,8 +22,19 @@ export type ListResult = {
  */
 export interface PinRepository {
   list(opts: ListOpts, signal?: AbortSignal): Promise<ListResult>;
+  /**
+   * Fetch suggestions for the in-memory mirror's miss case. Today suggestions
+   * are served entirely from `feed.descIndex` (see `selectSuggestions`), so
+   * production callers don't reach the repo. Kept on the interface for the
+   * future HTTP-backed impl where suggestions may need a server round trip.
+   */
   suggest(prefix: string, limit: number, signal?: AbortSignal): Promise<string[]>;
   create(pin: NewPin, signal?: AbortSignal): Promise<Pin>;
+  /**
+   * Reserved for the deferred pin-detail view (SPEC §1 non-goals). No
+   * production caller today; exercised by the repo tests so the contract
+   * doesn't rot.
+   */
   getById(id: string, signal?: AbortSignal): Promise<Pin | undefined>;
   /**
    * Release any object URLs the repository created on behalf of the given pin.

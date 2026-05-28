@@ -27,6 +27,11 @@ export function computePaintReady(
  * duplicate every fetch (once by the scheduler, once by the <img>'s srcset)
  * and bypass the browser cache. The browser is the cache; we just gate
  * *visibility* in display order via `isPaintReady`.
+ *
+ * `terminal` accumulates keys across the session but is only ever looked up
+ * for ids in the current window, so stale entries cost ~tens of bytes each
+ * and never affect output. The map is pruned lazily by `effectiveTerminal`
+ * to keep the in-render structure bounded by the current window.
  */
 export function usePaintScheduler(ids: readonly string[]) {
   const [terminal, setTerminal] = useState<Record<string, 'loaded' | 'errored'>>({});

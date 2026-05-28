@@ -1,99 +1,84 @@
 import { describe, it, expect } from 'vitest';
 import { makeStore } from './index';
 import {
-  suggest,
-  SUGGESTION_MIN_CHARS,
+  selectSuggestions,
+  setSuggestionQuery,
   clearSuggestions,
+  SUGGESTION_LIMIT,
 } from './suggestionsSlice';
+import { hydrate } from './feedSlice';
 import type { PinRepository } from '@/data/PinRepository';
+import type { Pin } from '@/types/Pin';
 
-function makeFakeRepo(overrides: Partial<PinRepository> = {}): PinRepository {
+function pin(id: string, description: string, createdAt = 1): Pin {
+  const variant = { url: '', width: 1, height: 1, type: 'image/webp' as const };
   return {
-    list: async () => ({ pins: [] }),
-    suggest: async () => [],
+    id,
+    description,
+    descriptionLower: description.toLowerCase(),
+    width: 1,
+    height: 1,
+    dominantColor: '#000',
+    createdAt,
+    responsive: { '170': variant, '236': variant, '474': variant, '736': variant, orig: variant },
+  };
+}
+
+function repoWithPins(pins: Pin[]): PinRepository {
+  return {
+    list: async () => ({ pins, nextCursor: undefined }),
+    suggest: async () => {
+      throw new Error('repo.suggest should never be called — selector serves suggestions');
+    },
     create: async () => {
       throw new Error('not implemented');
     },
     getById: async () => undefined,
-    ...overrides,
   };
 }
 
-describe('suggestionsSlice', () => {
-  it('condition blocks queries shorter than the threshold', async () => {
-    let calls = 0;
-    const repo = makeFakeRepo({
-      suggest: async () => {
-        calls += 1;
-        return [];
-      },
-    });
-    const store = makeStore(repo);
-    await store.dispatch(suggest('a'));
-    expect(calls).toBe(0);
-    await store.dispatch(suggest('ab'));
-    expect(calls).toBe(0);
-    expect('cat'.length).toBeGreaterThanOrEqual(SUGGESTION_MIN_CHARS);
-    await store.dispatch(suggest('cat'));
-    expect(calls).toBe(1);
+describe('suggestionsSlice / selectSuggestions', () => {
+  it('returns [] when query is shorter than the minimum threshold', async () => {
+    const store = makeStore(repoWithPins([pin('1', 'Cat photos')]));
+    await store.dispatch(hydrate());
+    store.dispatch(setSuggestionQuery('ca'));
+    expect(selectSuggestions(store.getState())).toEqual([]);
   });
 
-  it('fulfilled fills items when query still matches', async () => {
-    const repo = makeFakeRepo({
-      suggest: async (prefix) => [`${prefix} photos`, `${prefix}egory`],
-    });
-    const store = makeStore(repo);
-    await store.dispatch(suggest('cat'));
-    const s = store.getState().suggestions;
-    expect(s.query).toBe('cat');
-    expect(s.items).toEqual(['cat photos', 'category']);
-    expect(s.status).toBe('idle');
+  it('returns substring matches from the in-memory descIndex', async () => {
+    const seeded = [pin('1', 'Cat photos'), pin('2', 'Category'), pin('3', 'Dog')];
+    const store = makeStore(repoWithPins(seeded));
+    await store.dispatch(hydrate());
+    store.dispatch(setSuggestionQuery('cat'));
+    const items = selectSuggestions(store.getState());
+    expect(items.sort()).toEqual(['Cat photos', 'Category']);
   });
 
-  it('dropped result when query moved on (stale response)', async () => {
-    let resolveFirst: ((items: string[]) => void) | null = null;
-    let pending = 0;
-    const repo = makeFakeRepo({
-      suggest: (prefix) => {
-        pending += 1;
-        if (pending === 1) {
-          return new Promise<string[]>((res) => (resolveFirst = res));
-        }
-        return Promise.resolve([`${prefix} second`]);
-      },
-    });
-    const store = makeStore(repo);
-    const first = store.dispatch(suggest('cat'));
-    // Don't await first — start a second that lands first.
-    await store.dispatch(suggest('cats'));
-    expect(store.getState().suggestions.items).toEqual(['cats second']);
-    // Now the late "cat" response arrives — should be ignored.
-    resolveFirst!(['cat late']);
-    await first;
-    expect(store.getState().suggestions.items).toEqual(['cats second']);
-    expect(store.getState().suggestions.query).toBe('cats');
+  it('is case-insensitive', async () => {
+    const seeded = [pin('1', 'Cat'), pin('2', 'cATEGORY')];
+    const store = makeStore(repoWithPins(seeded));
+    await store.dispatch(hydrate());
+    store.dispatch(setSuggestionQuery('CAT'));
+    const items = selectSuggestions(store.getState());
+    expect(items.sort()).toEqual(['Cat', 'cATEGORY']);
   });
 
-  it('condition skips re-querying the same idle query', async () => {
-    let calls = 0;
-    const repo = makeFakeRepo({
-      suggest: async () => {
-        calls += 1;
-        return ['cat'];
-      },
-    });
-    const store = makeStore(repo);
-    await store.dispatch(suggest('cat'));
-    expect(calls).toBe(1);
-    await store.dispatch(suggest('cat'));
-    expect(calls).toBe(1);
+  it('caps results at SUGGESTION_LIMIT', async () => {
+    const many = Array.from({ length: SUGGESTION_LIMIT + 5 }, (_, i) =>
+      pin(`id-${i}`, `cat ${i}`, SUGGESTION_LIMIT + 5 - i),
+    );
+    const store = makeStore(repoWithPins(many));
+    await store.dispatch(hydrate());
+    store.dispatch(setSuggestionQuery('cat'));
+    expect(selectSuggestions(store.getState())).toHaveLength(SUGGESTION_LIMIT);
   });
 
-  it('clear resets state', async () => {
-    const repo = makeFakeRepo({ suggest: async () => ['cat photos'] });
-    const store = makeStore(repo);
-    await store.dispatch(suggest('cat'));
+  it('clear resets the query', async () => {
+    const store = makeStore(repoWithPins([pin('1', 'Cat')]));
+    await store.dispatch(hydrate());
+    store.dispatch(setSuggestionQuery('cat'));
     store.dispatch(clearSuggestions());
-    expect(store.getState().suggestions).toEqual({ query: '', items: [], status: 'idle' });
+    expect(store.getState().suggestions.query).toBe('');
+    expect(selectSuggestions(store.getState())).toEqual([]);
   });
 });

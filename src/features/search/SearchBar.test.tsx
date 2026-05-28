@@ -1,15 +1,34 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { useState } from 'react';
 import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
-import { makeStore } from '@/store';
+import { makeStore, type AppStore } from '@/store';
+import { hydrate } from '@/store/feedSlice';
 import type { PinRepository } from '@/data/PinRepository';
+import type { Pin } from '@/types/Pin';
 import { SearchBar } from './SearchBar';
 
-function repo(suggestImpl: PinRepository['suggest']): PinRepository {
+function pin(id: string, description: string): Pin {
+  const variant = { url: '', width: 1, height: 1, type: 'image/webp' as const };
   return {
-    list: async () => ({ pins: [] }),
-    suggest: suggestImpl,
+    id,
+    description,
+    descriptionLower: description.toLowerCase(),
+    width: 1,
+    height: 1,
+    dominantColor: '#000',
+    createdAt: 1,
+    responsive: { '170': variant, '236': variant, '474': variant, '736': variant, orig: variant },
+  };
+}
+
+function makeRepo(pins: Pin[]): PinRepository {
+  return {
+    list: async () => ({ pins, nextCursor: undefined }),
+    suggest: async () => {
+      throw new Error('repo.suggest must not be called from SearchBar');
+    },
     create: async () => {
       throw new Error('not implemented');
     },
@@ -17,56 +36,55 @@ function repo(suggestImpl: PinRepository['suggest']): PinRepository {
   };
 }
 
-function render_(node: React.ReactNode, suggestImpl: PinRepository['suggest']) {
-  const store = makeStore(repo(suggestImpl));
-  return {
-    store,
-    ...render(<Provider store={store}>{node}</Provider>),
-  };
+function Harness({ onCommit }: { onCommit: (q: string) => void }) {
+  const [value, setValue] = useState('');
+  return <SearchBar value={value} onChange={setValue} onCommit={onCommit} />;
+}
+
+async function renderWithStore(
+  pins: Pin[],
+  onCommit: (q: string) => void = () => {},
+): Promise<{ store: AppStore }> {
+  const store = makeStore(makeRepo(pins));
+  await store.dispatch(hydrate());
+  render(
+    <Provider store={store}>
+      <Harness onCommit={onCommit} />
+    </Provider>,
+  );
+  return { store };
 }
 
 describe('SearchBar', () => {
   beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
   afterEach(() => vi.useRealTimers());
 
-  it('does not call repo.suggest for queries shorter than 3 chars', async () => {
-    const suggestSpy = vi.fn().mockResolvedValue([]);
+  it('renders no suggestions for queries shorter than 3 chars', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render_(<SearchBar onCommit={() => {}} />, suggestSpy);
+    await renderWithStore([pin('1', 'cat photos'), pin('2', 'category')]);
     await user.type(screen.getByTestId('search-input'), 'ca');
     await act(async () => {
       vi.advanceTimersByTime(500);
     });
-    expect(suggestSpy).not.toHaveBeenCalled();
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
   });
 
-  it('calls repo.suggest after 250 ms when at least 3 chars are typed', async () => {
-    const suggestSpy = vi.fn().mockResolvedValue(['cat photos', 'category']);
+  it('renders matching suggestions after the debounce window', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render_(<SearchBar onCommit={() => {}} />, suggestSpy);
+    await renderWithStore([pin('1', 'cat photos'), pin('2', 'category'), pin('3', 'dog')]);
     await user.type(screen.getByTestId('search-input'), 'cat');
-    expect(suggestSpy).not.toHaveBeenCalled();
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
     await act(async () => {
       vi.advanceTimersByTime(250);
     });
-    expect(suggestSpy).toHaveBeenCalledWith('cat', 8, expect.any(AbortSignal));
+    const options = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(options.sort()).toEqual(['cat photos', 'category']);
   });
 
-  it('renders suggestions as listbox options', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render_(<SearchBar onCommit={() => {}} />, async () => ['cat photos', 'category']);
-    await user.type(screen.getByTestId('search-input'), 'cat');
-    await act(async () => {
-      vi.advanceTimersByTime(300);
-    });
-    const options = screen.getAllByRole('option');
-    expect(options.map((o) => o.textContent)).toEqual(['cat photos', 'category']);
-  });
-
-  it('Enter on a suggestion commits that text', async () => {
+  it('Enter on an arrowed-into suggestion commits that text', async () => {
     const onCommit = vi.fn();
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render_(<SearchBar onCommit={onCommit} />, async () => ['cat photos', 'category']);
+    await renderWithStore([pin('1', 'cat photos'), pin('2', 'category')], onCommit);
     await user.type(screen.getByTestId('search-input'), 'cat');
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -80,7 +98,7 @@ describe('SearchBar', () => {
   it('Enter without arrowing into the list commits the raw input (no auto-highlight)', async () => {
     const onCommit = vi.fn();
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render_(<SearchBar onCommit={onCommit} />, async () => ['cat photos', 'category']);
+    await renderWithStore([pin('1', 'cat photos'), pin('2', 'category')], onCommit);
     await user.type(screen.getByTestId('search-input'), 'cat');
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -92,7 +110,7 @@ describe('SearchBar', () => {
   it('Enter with no suggestions commits the raw input value', async () => {
     const onCommit = vi.fn();
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render_(<SearchBar onCommit={onCommit} />, async () => []);
+    await renderWithStore([], onCommit);
     await user.type(screen.getByTestId('search-input'), 'something else');
     await user.keyboard('{Enter}');
     expect(onCommit).toHaveBeenCalledWith('something else');

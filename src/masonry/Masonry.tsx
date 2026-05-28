@@ -83,9 +83,11 @@ export function Masonry({ pins }: { pins: PinModel[] }) {
   // after they scroll past the virtual window. Scrolling back to them is
   // then a pure scroll — no remount, no new <img> element, and therefore
   // no fresh "request" entry in DevTools (the browser doesn't re-fetch or
-  // re-resolve the blob URL). The set is pruned to current feed members
-  // (drops stale ids on search query change), so memory stays proportional
-  // to what the user has actually seen in this feed.
+  // re-resolve the blob URL). The underlying state may accumulate stale ids
+  // across feed-identity changes, but `rendered` below filters against the
+  // current `pinById`, so the on-screen output is always clean. The memory
+  // cost is one string per pin ever loaded (~tens of bytes), bounded by
+  // session lifetime; URL-cache eviction (DR-1) covers the larger blob refs.
   const [sticky, setSticky] = useState<ReadonlySet<string>>(() => new Set());
 
   const handleLoaded = useCallback(

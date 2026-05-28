@@ -10,8 +10,18 @@ import {
   type PinRepository,
 } from './PinRepository';
 
+/**
+ * Object URLs created by the repo are bounded by a small LRU. Each materialized
+ * pin contributes `RESPONSIVE_SIZES.length` entries, so a cap of N pins ≈ 5N
+ * URLs. The cap exists because every live `blob:` URL pins its Blob in memory
+ * — without eviction a long session leaks proportionally to total pins viewed.
+ */
+const URL_CACHE_PIN_CAP = 256;
+
 export class IndexedDbPinRepository implements PinRepository {
   private dbPromise: Promise<IDBPDatabase<PinsDB>>;
+  // Insertion-order Map = LRU when we re-insert on hit. Bounded by
+  // URL_CACHE_PIN_CAP * RESPONSIVE_SIZES.length entries.
   private urlCache = new Map<string, string>();
 
   constructor(dbPromise?: Promise<IDBPDatabase<PinsDB>>) {
@@ -27,6 +37,27 @@ export class IndexedDbPinRepository implements PinRepository {
         URL.revokeObjectURL(url);
         this.urlCache.delete(key);
       }
+    }
+  }
+
+  private touchUrl(key: string): string | undefined {
+    const url = this.urlCache.get(key);
+    if (url === undefined) return undefined;
+    // Re-insert to mark most-recently-used.
+    this.urlCache.delete(key);
+    this.urlCache.set(key, url);
+    return url;
+  }
+
+  private insertUrl(key: string, url: string): void {
+    this.urlCache.set(key, url);
+    const max = URL_CACHE_PIN_CAP * RESPONSIVE_SIZES.length;
+    while (this.urlCache.size > max) {
+      const oldestKey = this.urlCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      const oldestUrl = this.urlCache.get(oldestKey);
+      if (oldestUrl !== undefined) URL.revokeObjectURL(oldestUrl);
+      this.urlCache.delete(oldestKey);
     }
   }
 
@@ -212,7 +243,7 @@ export class IndexedDbPinRepository implements PinRepository {
       missing.forEach((key, i) => {
         const blobRec = fetched[i];
         if (blobRec && blobRec.blob instanceof Blob) {
-          this.urlCache.set(key, URL.createObjectURL(blobRec.blob));
+          this.insertUrl(key, URL.createObjectURL(blobRec.blob));
         }
       });
     }
@@ -222,7 +253,7 @@ export class IndexedDbPinRepository implements PinRepository {
       for (const size of RESPONSIVE_SIZES) {
         const v = record.variants[size];
         responsive[size] = {
-          url: this.urlCache.get(blobKey(record.id, size)) ?? '',
+          url: this.touchUrl(blobKey(record.id, size)) ?? '',
           width: v.width,
           height: v.height,
           type: v.type,

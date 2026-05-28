@@ -32,10 +32,12 @@ export interface PinsDB extends DBSchema {
   pins: {
     key: string;
     value: PinRecord;
+    // Only the compound (createdAt, id) index is read today; it powers stable
+    // newest-first feed pagination. Substring queries and suggestions both
+    // scan all records (see IndexedDbPinRepository.listByQuery / suggest), so
+    // a plain `byDescriptionLower` prefix index would not help.
     indexes: {
-      byCreatedAt: number;
       byCreatedAtId: [number, string];
-      byDescriptionLower: string;
     };
   };
   descriptions: {
@@ -55,9 +57,7 @@ export function openPinDb(): Promise<IDBPDatabase<PinsDB>> {
   return openDB<PinsDB>(DB_NAME, DB_VERSION, {
     upgrade(db) {
       const pins = db.createObjectStore('pins', { keyPath: 'id' });
-      pins.createIndex('byCreatedAt', 'createdAt');
       pins.createIndex('byCreatedAtId', ['createdAt', 'id']);
-      pins.createIndex('byDescriptionLower', 'descriptionLower');
       db.createObjectStore('descriptions', { keyPath: 'descriptionLower' });
       db.createObjectStore('blobs');
     },

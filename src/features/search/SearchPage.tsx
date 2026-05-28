@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useAppDispatch } from '@/store';
-import { fetchPage, setQuery } from '@/store/feedSlice';
 import { clearSuggestions } from '@/store/suggestionsSlice';
 import { useDebouncedSearch } from './useDebouncedSearch';
 import container from '@/ui/appContainer.module.css';
@@ -9,19 +8,18 @@ import { Feed } from './Feed';
 
 export function SearchPage() {
   const dispatch = useAppDispatch();
-  const [searchInputValue, setSearchInputValue] = useState('');
+  const [inputValue, setInputValue] = useState('');
 
-  // Auto-trigger search after debounce on input value change
-  useDebouncedSearch(searchInputValue, (newValue) => {
-    dispatch(setQuery(newValue.trim()));
-  });
+  // Single trigger: the debounced search hook owns dispatching setQuery +
+  // fetchPage whenever the input pauses. SearchBar.commit (Enter / suggestion
+  // pick) flushes the debounce immediately so the user sees no latency.
+  const flush = useDebouncedSearch(inputValue);
 
   function commit(newQuery: string) {
     const trimmed = newQuery.trim();
-    setSearchInputValue(trimmed);
-    dispatch(setQuery(trimmed));
+    setInputValue(trimmed);
     dispatch(clearSuggestions());
-    void dispatch(fetchPage());
+    flush(trimmed);
   }
 
   return (
@@ -30,11 +28,7 @@ export function SearchPage() {
         Pin feed
       </h1>
       <div role="search">
-        <SearchBar
-          onCommit={commit}
-          searchValue={searchInputValue}
-          onSearchChange={setSearchInputValue}
-        />
+        <SearchBar value={inputValue} onChange={setInputValue} onCommit={commit} />
       </div>
       <Feed />
     </section>
