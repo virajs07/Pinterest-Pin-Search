@@ -863,8 +863,8 @@ flowchart TD
   Tie -- no  --> Pick[Pick shortest]
   Left --> Place
   Pick --> Place["Place pin via<br/>transform: translate(x, y)<br/>x = colIndex × columnWidth<br/>y = columnHeights[colIndex]"]
-  Place --> Update[columnHeights[colIndex] += renderedHeight + gap]
-  Update --> Container[container height = max(columnHeights)]
+  Place --> Update["columnHeights[colIndex] += renderedHeight + gap"]
+  Update --> Container["container height = max(columnHeights)"]
   Container --> End([persist columnHeights<br/>for the next page])
 ```
 
