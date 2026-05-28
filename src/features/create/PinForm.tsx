@@ -49,17 +49,27 @@ export function PinForm() {
   const ready = state.status === 'ready';
 
   return (
-    <form className={styles.form} onSubmit={onSubmit} data-testid="pin-form">
+    <form
+      className={styles.form}
+      onSubmit={onSubmit}
+      data-testid="pin-form"
+      aria-busy={submitting || undefined}
+    >
       <label className={styles.field}>
         <span>Image</span>
         <input
           type="file"
           accept="image/*"
           required
+          aria-required="true"
           onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
         />
       </label>
-      {state.status === 'loading' && <p className={styles.preview}>Reading image…</p>}
+      {state.status === 'loading' && (
+        <p className={styles.preview} role="status">
+          Reading image…
+        </p>
+      )}
       {state.status === 'error' && (
         <p className={styles.preview} role="alert">
           {state.message}
@@ -69,6 +79,7 @@ export function PinForm() {
         <p className={styles.preview}>
           {state.metadata.width}×{state.metadata.height} · dominant color{' '}
           <span
+            aria-hidden="true"
             style={{
               display: 'inline-block',
               width: 10,
@@ -85,6 +96,7 @@ export function PinForm() {
         <span>Description</span>
         <textarea
           required
+          aria-required="true"
           maxLength={MAX_DESCRIPTION_LENGTH}
           value={description}
           onChange={(e) => setDescription(e.target.value)}

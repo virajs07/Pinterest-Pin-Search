@@ -25,10 +25,17 @@ export function Feed() {
   const status = useAppSelector((s) => s.feed.status);
   const pins = useAppSelector(selectFeedPins);
   const errorMessage = useAppSelector((s) => s.feed.errorMessage);
+  const nextCursor = useAppSelector((s) => s.feed.nextCursor);
 
   const onIntersect = useCallback(() => {
     void dispatch(fetchPage());
   }, [dispatch]);
+
+  // While loading, distinguish a fresh first-page request (e.g. a new search)
+  // from pagination. During a fresh request we keep stale pins on screen and
+  // show a subtle top indicator instead of a bottom skeleton.
+  const isPaginating = status === 'loading' && nextCursor !== undefined;
+  const isFreshLoading = status === 'loading' && nextCursor === undefined && pins.length > 0;
 
   // Show skeleton loader while loading
   if (status === 'loading' && pins.length === 0) {
@@ -67,8 +74,13 @@ export function Feed() {
 
   return (
     <div className={styles.feed} data-testid="feed">
+      {isFreshLoading && (
+        <div className={styles.searchingBar} role="status" aria-live="polite">
+          Searching…
+        </div>
+      )}
       <Masonry pins={pins} />
-      {status === 'loading' && <SkeletonLoader />}
+      {isPaginating && <SkeletonLoader />}
       {status !== 'end' && status !== 'loading' && <InfiniteLoader onIntersect={onIntersect} />}
       {status === 'end' && pins.length > 0 && (
         <p className={styles.empty} role="status">

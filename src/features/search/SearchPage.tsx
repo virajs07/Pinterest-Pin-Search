@@ -25,8 +25,17 @@ export function SearchPage() {
   }
 
   return (
-    <section data-testid="search-page" className={container.appContainer}>
-      <SearchBar onCommit={commit} searchValue={searchInputValue} onSearchChange={setSearchInputValue} />
+    <section data-testid="search-page" className={container.appContainer} aria-labelledby="search-page-heading">
+      <h1 id="search-page-heading" className={container.visuallyHidden}>
+        Pin feed
+      </h1>
+      <div role="search">
+        <SearchBar
+          onCommit={commit}
+          searchValue={searchInputValue}
+          onSearchChange={setSearchInputValue}
+        />
+      </div>
       <Feed />
     </section>
   );

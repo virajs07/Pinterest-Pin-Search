@@ -41,12 +41,18 @@ export function Pin({ pin, columnWidth, paintReady }: PinProps) {
           srcSet={srcSet}
           sizes={`${columnWidth}px`}
           alt={pin.description}
-          loading="auto"
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          {...({ fetchpriority: 'auto' } as any)}
+          loading="lazy"
+          decoding="async"
           width={orig.width}
           height={orig.height}
         />
+      )}
+      {showImage && (
+        // aria-hidden because the description is already exposed via the
+        // image's alt text — duplicating it would make AT read it twice.
+        <div className={styles.caption} aria-hidden="true">
+          <span className={styles.captionText}>{pin.description}</span>
+        </div>
       )}
     </div>
   );

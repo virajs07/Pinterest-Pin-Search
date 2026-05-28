@@ -14,8 +14,15 @@ export function Toast({ toast }: { toast: ToastModel }) {
     return () => window.clearTimeout(handle);
   }, [toast.id, dispatch]);
 
+  // Errors interrupt (role="alert" → assertive); info/success wait their turn
+  // (role="status" → polite). Each toast owns its own live region so the
+  // <Toaster> wrapper doesn't need to (and shouldn't, to avoid double announce).
+  const isError = toast.kind === 'error';
   return (
-    <div role="status" className={`${styles.toast} ${styles[toast.kind] ?? ''}`}>
+    <div
+      role={isError ? 'alert' : 'status'}
+      className={`${styles.toast} ${styles[toast.kind] ?? ''}`}
+    >
       <span>{toast.message}</span>
       <button
         type="button"
@@ -23,7 +30,7 @@ export function Toast({ toast }: { toast: ToastModel }) {
         aria-label="Dismiss notification"
         onClick={() => dispatch(dismissToast(toast.id))}
       >
-        ×
+        <span aria-hidden="true">×</span>
       </button>
     </div>
   );

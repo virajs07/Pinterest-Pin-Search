@@ -32,21 +32,24 @@ describe('AppRoutes', () => {
     expect(screen.getByTestId('search-page')).toBeInTheDocument();
   });
 
-  it('renders CreatePinPage at /create', () => {
+  // CreatePinPage is route-split via React.lazy, so initial render shows the
+  // Suspense fallback and the page resolves asynchronously.
+  it('lazily renders CreatePinPage at /create', async () => {
     renderAt('/create');
-    expect(screen.getByTestId('create-page')).toBeInTheDocument();
+    expect(await screen.findByTestId('create-page')).toBeInTheDocument();
   });
 
   it('navigates from header Create link to /create', async () => {
     const user = userEvent.setup();
     renderAt('/');
     await user.click(screen.getByRole('link', { name: 'Create' }));
-    expect(screen.getByTestId('create-page')).toBeInTheDocument();
+    expect(await screen.findByTestId('create-page')).toBeInTheDocument();
   });
 
   it('navigates back to / from the brand link', async () => {
     const user = userEvent.setup();
     renderAt('/create');
+    await screen.findByTestId('create-page');
     await user.click(screen.getByRole('link', { name: /pin search/i }));
     expect(screen.getByTestId('search-page')).toBeInTheDocument();
   });

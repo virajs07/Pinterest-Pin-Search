@@ -92,6 +92,7 @@ export function Masonry({ pins }: { pins: PinModel[] }) {
             <div
               key={pin.id}
               className={styles.cell}
+              role="presentation"
               style={{
                 transform: `translate(${pos.x}px, ${pos.y}px)`,
                 width: columnWidth,

@@ -56,6 +56,30 @@ body {
   margin: 0;
 }
 
+/* Single, consistent focus ring for every interactive surface that gains
+ * focus via keyboard. :focus-visible avoids the noisy ring on mouse clicks. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role='option']:focus-visible {
+  outline: 2px solid var(--accent, #aa3bff);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 #root {
   width: 1126px;
   max-width: 100%;

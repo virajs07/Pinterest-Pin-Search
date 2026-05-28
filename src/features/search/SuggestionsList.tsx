@@ -25,11 +25,11 @@ export function SuggestionsList({
             role="option"
             aria-selected={selected}
             className={styles.option}
-            onMouseDown={(e) => {
-              // Use mousedown so we beat the input's blur which would close the list first.
-              e.preventDefault();
-              onPick(item);
-            }}
+            // mousedown fires before the input's blur, so the option doesn't
+            // unmount before the click lands. preventDefault keeps focus on
+            // the input (preserving keyboard context for screen readers).
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onPick(item)}
           >
             {item}
           </li>

@@ -4,7 +4,7 @@ import type { PinRepository } from '@/data/PinRepository';
 import { removePin, upsertPin, upsertPins } from './pinsSlice';
 import { pushToast } from './toastsSlice';
 
-export type FeedStatus = 'idle' | 'loading' | 'error' | 'end' | 'no_results' | 'api_error';
+export type FeedStatus = 'idle' | 'loading' | 'end' | 'no_results' | 'api_error';
 
 export type FeedState = {
   order: string[];
@@ -59,33 +59,61 @@ function buildOptimisticPin(tempId: string, newPin: NewPin, createdAt: number): 
 }
 
 export const PAGE_SIZE = 20;
+export const FETCH_TIMEOUT_MS = 8000;
 
 type StateLike = { feed: FeedState };
 
 export const fetchPage = createAsyncThunk<
-  { pins: Pin[]; nextCursor?: string; appendedTo: string },
+  { pins: Pin[]; nextCursor?: string; appendedTo: string; isFirstPage: boolean },
   void,
-  { extra: ThunkExtra }
+  { extra: ThunkExtra; rejectValue: string }
 >(
   'feed/fetchPage',
-  async (_arg, { dispatch, extra, getState, signal }) => {
+  async (_arg, { dispatch, extra, getState, signal, rejectWithValue }) => {
     const before = (getState() as StateLike).feed;
-    const result = await extra.repo.list(
-      {
-        cursor: before.nextCursor,
-        limit: PAGE_SIZE,
-        query: before.query || undefined,
-      },
-      signal,
+
+    // Combine the thunk's abort signal with a timeout, so the request fails
+    // fast if the repo (today IndexedDB, tomorrow HTTP) wedges. We track which
+    // controller fired so the rejected reducer can pick a clear message.
+    const timeoutCtrl = new AbortController();
+    const timeoutId = setTimeout(
+      () => timeoutCtrl.abort(new DOMException('Timed out', 'TimeoutError')),
+      FETCH_TIMEOUT_MS,
     );
-    // Drop the entity write if the user changed query while we were in flight.
-    // The fulfilled reducer below also no-ops in that case; this prevents
-    // unreferenced pins from accumulating in state.pins.entities.
-    const after = (getState() as StateLike).feed;
-    if ((after.query || undefined) === (before.query || undefined)) {
-      dispatch(upsertPins(result.pins));
+    const forwardAbort = () => timeoutCtrl.abort();
+    signal.addEventListener('abort', forwardAbort);
+
+    try {
+      const result = await extra.repo.list(
+        {
+          cursor: before.nextCursor,
+          limit: PAGE_SIZE,
+          query: before.query || undefined,
+        },
+        timeoutCtrl.signal,
+      );
+      // Drop the entity write if the user changed query while we were in flight.
+      // The fulfilled reducer below also no-ops in that case; this prevents
+      // unreferenced pins from accumulating in state.pins.entities.
+      const after = (getState() as StateLike).feed;
+      if ((after.query || undefined) === (before.query || undefined)) {
+        dispatch(upsertPins(result.pins));
+      }
+      return {
+        ...result,
+        appendedTo: before.query,
+        isFirstPage: before.nextCursor === undefined,
+      };
+    } catch (err) {
+      if (timeoutCtrl.signal.aborted && !signal.aborted) {
+        return rejectWithValue('Search timed out. Please try again.');
+      }
+      const message = err instanceof Error ? err.message : 'Failed to load results';
+      return rejectWithValue(message);
+    } finally {
+      clearTimeout(timeoutId);
+      signal.removeEventListener('abort', forwardAbort);
     }
-    return { ...result, appendedTo: before.query };
   },
   {
     condition: (_arg, { getState }) => {
@@ -129,10 +157,13 @@ const feedSlice = createSlice({
   initialState,
   reducers: {
     setQuery(state, action: PayloadAction<string>) {
+      // Keep state.order populated so the user sees stale pins while the new
+      // query is in flight (prevents FOUC). The first page of the new query
+      // replaces the order in fetchPage.fulfilled.
       state.query = action.payload;
-      state.order = [];
       state.nextCursor = undefined;
       state.status = 'idle';
+      state.errorMessage = undefined;
     },
     optimisticAdded(
       state,
@@ -188,42 +219,55 @@ const feedSlice = createSlice({
         else state.descIndex[k] = [p.id];
       }
     });
-    builder.addCase(hydrate.rejected, (state) => {
-      state.status = 'error';
+    builder.addCase(hydrate.rejected, (state, action) => {
+      state.status = 'api_error';
+      state.errorMessage = action.error.message ?? 'Failed to load feed';
     });
     builder.addCase(fetchPage.pending, (state) => {
       state.status = 'loading';
     });
     builder.addCase(fetchPage.fulfilled, (state, action) => {
-      const { pins, nextCursor, appendedTo } = action.payload;
+      const { pins, nextCursor, appendedTo, isFirstPage } = action.payload;
       // If the query changed mid-flight, drop the response.
       if ((state.query || undefined) !== (appendedTo || undefined)) return;
-      
-      // Reset error state on successful fetch
+
       state.errorMessage = undefined;
-      
-      // Handle empty results
-      if (pins.length === 0 && state.order.length === 0 && state.query) {
+
+      if (isFirstPage) {
+        // First page of this query — replace the order in one shot so the
+        // user goes from stale pins straight to fresh pins (no blank state).
+        state.order = pins.map((p) => p.id);
+        state.descIndex = {};
+        for (const p of pins) {
+          const list = state.descIndex[p.descriptionLower];
+          if (list) list.push(p.id);
+          else state.descIndex[p.descriptionLower] = [p.id];
+        }
+      } else {
+        for (const p of pins) {
+          if (!state.order.includes(p.id)) state.order.push(p.id);
+          const list = state.descIndex[p.descriptionLower];
+          if (list) {
+            if (!list.includes(p.id)) list.push(p.id);
+          } else {
+            state.descIndex[p.descriptionLower] = [p.id];
+          }
+        }
+      }
+
+      if (state.order.length === 0 && state.query) {
         state.status = 'no_results';
         return;
       }
-      
-      for (const p of pins) {
-        if (!state.order.includes(p.id)) state.order.push(p.id);
-        const list = state.descIndex[p.descriptionLower];
-        if (list) {
-          if (!list.includes(p.id)) list.push(p.id);
-        } else {
-          state.descIndex[p.descriptionLower] = [p.id];
-        }
-      }
+
       state.nextCursor = nextCursor;
       state.status = nextCursor ? 'idle' : 'end';
     });
     builder.addCase(fetchPage.rejected, (state, action) => {
-      const errorMessage = (action.payload as string | undefined) || 'Failed to fetch results';
+      // Ignore aborts caused by query changes — the new request will replace state.
+      if (action.meta.aborted) return;
       state.status = 'api_error';
-      state.errorMessage = errorMessage;
+      state.errorMessage = action.payload ?? 'Failed to load results';
     });
   },
 });

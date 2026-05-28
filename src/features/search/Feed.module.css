@@ -10,6 +10,7 @@
   color: var(--text, #6b6375);
   text-align: center;
   padding: 64px 24px;
+  opacity: 0;
 }
 
 .error {
@@ -20,6 +21,16 @@
   padding: 16px 24px;
   text-align: center;
   margin: 12px 0;
+}
+
+.searchingBar {
+  font-size: 13px;
+  color: var(--text, #6b6375);
+  padding: 6px 12px;
+  text-align: center;
+  background: rgba(170, 59, 255, 0.06);
+  border-radius: 8px;
+  margin-bottom: 4px;
 }
 
 .skeletonContainer {

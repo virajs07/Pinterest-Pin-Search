@@ -56,7 +56,7 @@ describe('feedSlice hydrate', () => {
     expect(store.getState().feed.status).toBe('end');
   });
 
-  it('sets status=error on repo rejection', async () => {
+  it('sets status=api_error on repo rejection', async () => {
     const repo = makeFakeRepo({
       list: async () => {
         throw new Error('idb broken');
@@ -64,7 +64,9 @@ describe('feedSlice hydrate', () => {
     });
     const store = makeStore(repo);
     await store.dispatch(hydrate());
-    expect(store.getState().feed.status).toBe('error');
+    const s = store.getState().feed;
+    expect(s.status).toBe('api_error');
+    expect(s.errorMessage).toContain('idb broken');
   });
 
   const fakeVariant = { blob: new Blob(), width: 1, height: 1, type: 'image/webp' as const };
@@ -251,11 +253,15 @@ describe('feedSlice hydrate', () => {
 
       store.dispatch(setQuery('cat'));
       expect(store.getState().feed.query).toBe('cat');
-      expect(store.getState().feed.order).toEqual([]);
+      // Stale pins are kept on screen until the new query's first page resolves,
+      // preventing a flash-of-empty-content during search.
+      expect(store.getState().feed.order).toEqual(['a']);
+      expect(store.getState().feed.nextCursor).toBeUndefined();
       expect(store.getState().feed.status).toBe('idle');
 
       await store.dispatch(fetchPage());
       expect(listCalls[listCalls.length - 1]).toEqual({ query: 'cat' });
+      // Once the new first page lands, order is replaced (not appended).
       expect(store.getState().feed.order).toEqual(['c1']);
     });
 

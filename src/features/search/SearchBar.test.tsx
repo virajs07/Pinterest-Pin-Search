@@ -71,8 +71,22 @@ describe('SearchBar', () => {
     await act(async () => {
       vi.advanceTimersByTime(300);
     });
-    await user.keyboard('{ArrowDown}{Enter}');
+    // First ArrowDown moves from "no selection" to the first item, so two
+    // presses are needed to land on "category".
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}');
     expect(onCommit).toHaveBeenCalledWith('category');
+  });
+
+  it('Enter without arrowing into the list commits the raw input (no auto-highlight)', async () => {
+    const onCommit = vi.fn();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render_(<SearchBar onCommit={onCommit} />, async () => ['cat photos', 'category']);
+    await user.type(screen.getByTestId('search-input'), 'cat');
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    await user.keyboard('{Enter}');
+    expect(onCommit).toHaveBeenCalledWith('cat');
   });
 
   it('Enter with no suggestions commits the raw input value', async () => {

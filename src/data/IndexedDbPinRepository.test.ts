@@ -77,21 +77,22 @@ describe('IndexedDbPinRepository', () => {
     expect(seen).toEqual([...created].reverse());
   });
 
-  it('list filters by query (description prefix, case-insensitive)', async () => {
+  it('list filters by query (description substring, case-insensitive)', async () => {
     await repo.create(makeNewPin('Cat photos'));
-    await repo.create(makeNewPin('Cat videos'));
+    await repo.create(makeNewPin('A happy cat'));
     await repo.create(makeNewPin('Dog photos'));
     const { pins } = await repo.list({ limit: 10, query: 'cat' });
     const descriptions = pins.map((p) => p.description).sort();
-    expect(descriptions).toEqual(['Cat photos', 'Cat videos']);
+    expect(descriptions).toEqual(['A happy cat', 'Cat photos']);
   });
 
-  it('suggest returns descriptions matching the prefix, case-insensitive', async () => {
+  it('suggest matches anywhere in the description, case-insensitive', async () => {
     await repo.create(makeNewPin('Cat photos'));
+    await repo.create(makeNewPin('My favorite cat'));
     await repo.create(makeNewPin('Category'));
     await repo.create(makeNewPin('Dog'));
     const matches = await repo.suggest('cat', 5);
-    expect(matches.sort()).toEqual(['Cat photos', 'Category']);
+    expect(matches.sort()).toEqual(['Cat photos', 'Category', 'My favorite cat']);
   });
 
   it('suggest returns at most `limit` entries', async () => {

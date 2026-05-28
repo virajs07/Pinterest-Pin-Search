@@ -7,18 +7,42 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies & build output
 node_modules
 dist
 dist-ssr
+build
+coverage
 *.local
 
-# Editor directories and files
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Vite / TypeScript caches
+.vite
+*.tsbuildinfo
+
+# Test caches
+.vitest
+
+# Editor & OS metadata
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Agent / assistant tooling (local, not for VCS)
+.claude/
+.cursor/
+.aider*
+.continue/
+.windsurf/
+CLAUDE.local.md

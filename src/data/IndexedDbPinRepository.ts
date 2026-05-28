@@ -100,16 +100,23 @@ export class IndexedDbPinRepository implements PinRepository {
     return this.listByFeedOrder(opts.cursor, limit);
   }
 
-  async suggest(prefix: string, limit: number, signal?: AbortSignal): Promise<string[]> {
+  /**
+   * Substring match across every stored description (case-insensitive).
+   * Indexed prefix range can't express "match anywhere", so we scan all
+   * descriptions and filter in memory. Fine for a local-only store; the
+   * HTTP-backed repo would push this to the server.
+   */
+  async suggest(query: string, limit: number, signal?: AbortSignal): Promise<string[]> {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    if (prefix.length === 0) return [];
+    if (query.length === 0) return [];
     const db = await this.dbPromise;
-    const lower = prefix.toLowerCase();
-    const range = IDBKeyRange.bound(lower, lower + '￿');
+    const needle = query.toLowerCase();
     const results: string[] = [];
-    let cursor = await db.transaction('descriptions').objectStore('descriptions').openCursor(range);
+    let cursor = await db.transaction('descriptions').objectStore('descriptions').openCursor();
     while (cursor && results.length < limit) {
-      results.push(cursor.value.description);
+      if (cursor.value.descriptionLower.includes(needle)) {
+        results.push(cursor.value.description);
+      }
       cursor = await cursor.continue();
     }
     return results;
@@ -143,15 +150,18 @@ export class IndexedDbPinRepository implements PinRepository {
     limit: number,
   ): Promise<ListResult> {
     const db = await this.dbPromise;
-    const lower = query.toLowerCase();
-    const range = IDBKeyRange.bound(lower, lower + '￿');
+    const needle = query.toLowerCase();
 
+    // Substring match: descriptions can match the query anywhere in the text,
+    // so the byDescriptionLower prefix index is insufficient. Scan all pins
+    // and filter; same trade-off as suggest().
     const tx = db.transaction('pins', 'readonly');
-    const index = tx.objectStore('pins').index('byDescriptionLower');
     const all: PinRecord[] = [];
-    let cursor = await index.openCursor(range);
+    let cursor = await tx.objectStore('pins').openCursor();
     while (cursor) {
-      all.push(cursor.value);
+      if (cursor.value.descriptionLower.includes(needle)) {
+        all.push(cursor.value);
+      }
       cursor = await cursor.continue();
     }
     await tx.done;
