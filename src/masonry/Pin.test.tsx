@@ -24,19 +24,22 @@ function makePin(overrides: Partial<PinModel> = {}): PinModel {
 }
 
 describe('Pin', () => {
-  it('renders the dominantColor placeholder without <img> when not paint-ready', () => {
+  it('mounts <img> with opacity 0 when not paint-ready (browser still fetches once)', () => {
     const pin = makePin();
     const { container } = render(<Pin pin={pin} columnWidth={236} paintReady={false} />);
-    expect(container.querySelector('img')).toBeNull();
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img!.style.opacity).toBe('0');
     const box = container.firstChild as HTMLElement;
     expect(box.style.backgroundColor).toBe('rgb(170, 187, 204)');
     expect(box.style.aspectRatio).toBe('800 / 600');
   });
 
-  it('mounts <img> with srcset and sizes when paint-ready', () => {
+  it('mounts <img> with full opacity, srcset, and sizes when paint-ready', () => {
     const pin = makePin();
     render(<Pin pin={pin} columnWidth={236} paintReady={true} />);
     const img = screen.getByRole('img', { name: 'A pin' });
+    expect(img.style.opacity).toBe('1');
     expect(img.getAttribute('srcset')?.split(',').map((s) => s.trim()).length).toBe(5);
     expect(img.getAttribute('sizes')).toBe('236px');
     expect(img.getAttribute('alt')).toBe('A pin');

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Pin as PinModel } from '@/types/Pin';
 import { Pin } from './Pin';
 import { layoutPins } from './useMasonryLayout';
@@ -57,24 +57,67 @@ export function Masonry({ pins }: { pins: PinModel[] }) {
   );
   const totalWidth = columnCount * columnWidth + (columnCount - 1) * MASONRY_GAP_PX;
 
-  const { positions, containerHeight, pinById, ids, urlById } = useMemo(() => {
+  const { positions, containerHeight, pinById, ids } = useMemo(() => {
     const sizes = pins.map((p) => ({ id: p.id, width: p.width, height: p.height }));
     const layout = layoutPins(sizes, columnCount, columnWidth, MASONRY_GAP_PX);
     const map = new Map(pins.map((p) => [p.id, p]));
     const idsArr = pins.map((p) => p.id);
-    const urls = new Map(pins.map((p) => [p.id, p.responsive.orig.url]));
     return {
       positions: layout.positions,
       containerHeight: layout.containerHeight,
       pinById: map,
       ids: idsArr,
-      urlById: urls,
     };
   }, [pins, columnCount, columnWidth]);
 
-  const { isPaintReady } = usePaintScheduler(ids, urlById);
   const cap = getDomCap(availableWidth);
   const visible = useVirtualWindow(positions, cap);
+
+  // Gate in-order paint only for the pins currently in the visible window.
+  // Anything outside is neither in the DOM nor known to the scheduler, so it
+  // costs zero work until it scrolls into view.
+  const visibleIds = useMemo(() => ids.filter((id) => visible.has(id)), [ids, visible]);
+  const { isPaintReady, report } = usePaintScheduler(visibleIds);
+
+  // Pins that have already been fully loaded stick around in the DOM even
+  // after they scroll past the virtual window. Scrolling back to them is
+  // then a pure scroll — no remount, no new <img> element, and therefore
+  // no fresh "request" entry in DevTools (the browser doesn't re-fetch or
+  // re-resolve the blob URL). The set is pruned to current feed members
+  // (drops stale ids on search query change), so memory stays proportional
+  // to what the user has actually seen in this feed.
+  const [sticky, setSticky] = useState<ReadonlySet<string>>(() => new Set());
+
+  const handleLoaded = useCallback(
+    (id: string) => {
+      report(id, 'loaded');
+      setSticky((prev) => {
+        if (prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+    },
+    [report],
+  );
+
+  const handleErrored = useCallback(
+    (id: string) => {
+      report(id, 'errored');
+    },
+    [report],
+  );
+
+  const rendered = useMemo(() => {
+    const merged = new Set(visible);
+    // Filter sticky against the current feed in case the user has switched
+    // queries — stale ids stay in `sticky` (cheap memory) but are skipped
+    // here so they don't appear in the rendered output.
+    for (const id of sticky) {
+      if (pinById.has(id)) merged.add(id);
+    }
+    return merged;
+  }, [visible, sticky, pinById]);
 
   return (
     <div ref={sizerRef} className={styles.sizer} data-testid="masonry-sizer">
@@ -85,7 +128,7 @@ export function Masonry({ pins }: { pins: PinModel[] }) {
         style={{ width: totalWidth, height: containerHeight }}
       >
         {positions.map((pos) => {
-          if (!visible.has(pos.id)) return null;
+          if (!rendered.has(pos.id)) return null;
           const pin = pinById.get(pos.id);
           if (!pin) return null;
           return (
@@ -98,7 +141,13 @@ export function Masonry({ pins }: { pins: PinModel[] }) {
                 width: columnWidth,
               }}
             >
-              <Pin pin={pin} columnWidth={columnWidth} paintReady={isPaintReady(pin.id)} />
+              <Pin
+                pin={pin}
+                columnWidth={columnWidth}
+                paintReady={isPaintReady(pin.id)}
+                onLoaded={() => handleLoaded(pin.id)}
+                onErrored={() => handleErrored(pin.id)}
+              />
             </div>
           );
         })}

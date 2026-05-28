@@ -11,17 +11,17 @@ describe('computeVisibleIds', () => {
     expect(computeVisibleIds([], 0, 800, 40).size).toBe(0);
   });
 
-  it('includes pins within the [-1, +2] viewport window', () => {
+  it('includes pins within viewport + small buffer (200px above, 400px below)', () => {
+    // scrollTop=1000, viewportHeight=800 → window y ∈ [800, 2200].
     const positions = [
-      pos('a', 0),
-      pos('b', 500),
-      pos('c', 1000),
-      pos('d', 2000),
-      pos('e', 5000),
+      pos('a', 0, 200), // ends at 200 — below window (800); excluded
+      pos('b', 700, 200), // ends at 900 — overlaps window; included
+      pos('c', 1500), // entirely in viewport; included
+      pos('d', 2150), // just inside lookahead; included
+      pos('e', 2400), // beyond lookahead; excluded
     ];
     const visible = computeVisibleIds(positions, 1000, 800, 40);
-    // window top = 200, bottom = 2600. 'a' is below window-top? a is y=0..200, end=200, equals windowTop → included.
-    expect(visible.has('a')).toBe(true);
+    expect(visible.has('a')).toBe(false);
     expect(visible.has('b')).toBe(true);
     expect(visible.has('c')).toBe(true);
     expect(visible.has('d')).toBe(true);
@@ -29,7 +29,7 @@ describe('computeVisibleIds', () => {
   });
 
   it('honors the cap — keeps pins closest to the viewport center', () => {
-    // 10 pins (each 80px tall) at y = i*100; all inside the −1..+2 viewport window.
+    // 10 pins (each 80px tall) at y = i*100; all inside the buffered window.
     const positions = Array.from({ length: 10 }, (_, i) => pos(`p${i}`, i * 100, 80));
     // scrollTop=450, viewportHeight=800 → center=850. Pin mid-ys: 40,140,...,940.
     // Closest 3: p8 (mid 840, dist 10), p9 (940, 90), p7 (740, 110).

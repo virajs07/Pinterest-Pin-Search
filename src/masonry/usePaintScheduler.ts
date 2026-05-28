@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 export type PaintState = 'pending' | 'loaded' | 'errored';
 
@@ -22,52 +22,18 @@ export function computePaintReady(
 }
 
 /**
- * Kick off `new Image()` preloads in parallel for the given ids; track the
- * load state per id; expose `isPaintReady(id)` for callers to gate their
- * `<img>` mount.
- *
- * Single retry on error, then advance (DR-11).
+ * Tracks per-pin load state via callbacks from the actual rendered <img>
+ * elements. There is intentionally no `new Image()` preload here — that would
+ * duplicate every fetch (once by the scheduler, once by the <img>'s srcset)
+ * and bypass the browser cache. The browser is the cache; we just gate
+ * *visibility* in display order via `isPaintReady`.
  */
-export function usePaintScheduler(
-  ids: readonly string[],
-  urlById: Map<string, string>,
-) {
-  // Only terminal states are tracked; absence = pending.
+export function usePaintScheduler(ids: readonly string[]) {
   const [terminal, setTerminal] = useState<Record<string, 'loaded' | 'errored'>>({});
-  const startedRef = useRef<Set<string>>(new Set());
-  const retriedRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    const markLoaded = (id: string) =>
-      queueMicrotask(() => setTerminal((s) => ({ ...s, [id]: 'loaded' })));
-    const markErrored = (id: string) =>
-      queueMicrotask(() => setTerminal((s) => ({ ...s, [id]: 'errored' })));
-
-    function preload(url: string, id: string) {
-      const img = new Image();
-      img.onload = () => markLoaded(id);
-      img.onerror = () => {
-        if (retriedRef.current.has(id)) {
-          markErrored(id);
-        } else {
-          retriedRef.current.add(id);
-          preload(url, id);
-        }
-      };
-      img.src = url;
-    }
-
-    for (const id of ids) {
-      if (startedRef.current.has(id)) continue;
-      startedRef.current.add(id);
-      const url = urlById.get(id);
-      if (!url) {
-        markErrored(id);
-        continue;
-      }
-      preload(url, id);
-    }
-  }, [ids, urlById]);
+  const report = useCallback((id: string, state: 'loaded' | 'errored') => {
+    setTerminal((prev) => (prev[id] === state ? prev : { ...prev, [id]: state }));
+  }, []);
 
   const ready = useMemo(() => {
     const states: Record<string, PaintState> = {};
@@ -79,5 +45,6 @@ export function usePaintScheduler(
     isPaintReady(id: string): boolean {
       return ready.has(id);
     },
+    report,
   };
 }

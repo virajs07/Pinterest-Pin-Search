@@ -7,8 +7,20 @@ export function getDomCap(viewportWidth: number): number {
 }
 
 /**
- * Pure selection of which pin ids fall inside [−1, +2] viewports of the
- * current scroll position, capped by the device-class maximum.
+ * Lazy-loading buffer around the current viewport.
+ *
+ * Anything outside [scrollTop − LOOKBEHIND_PX, scrollTop + viewportHeight +
+ * LOOKAHEAD_PX] is skipped from the DOM (and therefore skipped from network
+ * preload by the paint scheduler). The lookahead is intentionally small —
+ * just enough to fetch the next row before it scrolls into view — so users
+ * never pay network cost for pins they can't see.
+ */
+export const LOOKBEHIND_PX = 200;
+export const LOOKAHEAD_PX = 400;
+
+/**
+ * Pin ids whose box overlaps the current viewport plus a small lazy-loading
+ * buffer, capped by the device-class maximum.
  */
 export function computeVisibleIds(
   positions: readonly LayoutPosition[],
@@ -17,8 +29,8 @@ export function computeVisibleIds(
   cap: number,
 ): Set<string> {
   if (positions.length === 0) return new Set();
-  const windowTop = scrollTop - viewportHeight;
-  const windowBottom = scrollTop + 2 * viewportHeight;
+  const windowTop = scrollTop - LOOKBEHIND_PX;
+  const windowBottom = scrollTop + viewportHeight + LOOKAHEAD_PX;
   const inWindow = positions.filter(
     (p) => p.y + p.height >= windowTop && p.y <= windowBottom,
   );
